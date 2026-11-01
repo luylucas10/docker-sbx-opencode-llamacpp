@@ -1,0 +1,65 @@
+schemaVersion: "1"
+kind: sandbox
+name: opencode-llamacpp
+displayName: "OpenCode LLaMA.cpp"
+description: "A sandbox for running OpenCode with LLaMA.cpp"
+
+sandbox:
+  image: "docker/sandbox-templates:shell-docker"
+  aiFilename: "AGENTS.md"
+  entrypoint:
+    run: [opencode]
+
+network:
+  allowedDomains: ["*"]
+
+commands:
+  install:
+    - command: "apt-get update && apt-get upgrade -y"
+      description: "Update and upgrade the system packages"
+
+    - command: "chown -R agent:agent /home/agent"
+      description: "Kit files/ injection lands root-owned; every install step below runs as the agent user (uid 1000), which needs write access under its own home"
+
+    - command: "mkdir -p /usr/local/share/npm-global/lib && chown -R agent:agent /usr/local/share/npm-global"
+      description: "Fix missing npm global prefix dir in shell-docker image (breaks npx), and hand it to agent since the rest of install now runs as that user"
+
+    - command: "curl -fsSL https://opencode.ai/install | bash && mkdir -p $HOME/.local/bin && ln -s $HOME/.opencode/bin/opencode $HOME/.local/bin/opencode"
+      user: "1000"
+      description: "Install OpenCode as the agent user, so $HOME resolves to /home/agent (root's $HOME would leave it invisible to the agent-run entrypoint). Symlinked into ~/.local/bin, already first on PATH, since the installer's own PATH wiring only edits shell rc files nothing here sources."
+
+    - command: "curl -fsSL https://raw.githubusercontent.com/JuliusBrussee/caveman/main/install.sh | bash -s -- --all --non-interactive --with-init --only opencode"
+      user: "1000"
+      description: "Install caveman as the agent user, so its opencode config lands in $HOME/.config/opencode where the entrypoint actually looks"
+
+    - command: "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
+      user: "1000"
+      description: "Install RTK as the agent user (default install dir is $HOME/.local/bin, which only resolves correctly under this user)"
+
+    - command: "rtk init -g --opencode"
+      user: "1000"
+      description: "Initialize RTK globally with the OpenCode plugin (rtk init has no 'opencode' positional arg — -g is --global, --opencode is a separate flag). Dropped the original '&& rtk trust': that trusts .rtk/filters.toml in the *current* dir, which doesn't exist at image-build time before any project is mounted — it always failed with 'No .rtk/filters.toml found'. Run 'rtk trust' from the workspace instead, once there's an actual project to trust."
+
+    - command: "npx ctx7 setup --opencode --mcp --yes --oauth"
+      user: "1000"
+      description: "Setup Context7 MCP"
+
+    - command: "npx skills@latest add mattpocock/skills -g -a opencode --skill '*' --copy -y"
+      user: "1000"
+      description: "Add skills to the opencode profile (--all is shorthand for --skill '*' --agent '*' — it ignores -a and dumps every skill into ~80 agent-adapter dirs like .cursor/.windsurf/.claude across the workspace; use --skill '*' to scope skills without clobbering -a. -g installs to the global agent config instead of the mounted project dir, since this runs once at image build, before any project exists.)"
+
+agentContext: |
+  ## Sandbox environment
+
+  You are running inside a Docker sandbox. The workspace is mounted at
+  its absolute host path. `sudo` is passwordless; use it for package
+  installs. Docker is available inside the sandbox; containers you start
+  are isolated in the microVM.
+  
+  ## Tools
+
+  Always use ponytail in the highest mode in code generation tasks
+  Always use caveman in the highest mode, except for documentation
+  Always use RTK for any type of bash command
+  Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask
+  Always write docs in markdown format, pt-br language

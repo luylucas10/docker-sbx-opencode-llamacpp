@@ -89,8 +89,8 @@ Alternatively, build from source:
 ```bash
 git clone https://github.com/ggml-org/llama.cpp
 cd llama.cpp
-cmake -B build
-cmake --build build --config Release
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release -j 8
 sudo cmake --install build
 ```
 
